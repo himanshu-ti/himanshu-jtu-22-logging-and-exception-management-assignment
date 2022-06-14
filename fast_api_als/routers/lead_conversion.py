@@ -1,3 +1,4 @@
+from http.client import HTTPException
 import json
 from fastapi import APIRouter, Depends
 import logging
@@ -26,19 +27,27 @@ def get_quicksight_data(lead_uuid, item):
             Returns:
                 S3 data
     """
-    data = {
-        "lead_hash": lead_uuid,
-        "epoch_timestamp": int(time.time()),
-        "make": item['make'],
-        "model": item['model'],
-        "conversion": 1,
-        "postalcode": item.get('postalcode', 'unknown'),
-        "dealer": item.get('dealer', 'unknown'),
-        "3pl": item.get('3pl', 'unknown'),
-        "oem_responded": 1
-    }
-    return data, f"{item['make']}/1_{int(time.time())}_{lead_uuid}"
+    
+    try:
+        data = {
+            "lead_hash": lead_uuid,
+            "epoch_timestamp": int(time.time()),
+            "make": item['make'],
+            "model": item['model'],
+            "conversion": 1,
+            "postalcode": item.get('postalcode', 'unknown'),
+            "dealer": item.get('dealer', 'unknown'),
+            "3pl": item.get('3pl', 'unknown'),
+            "oem_responded": 1
+        }
+    except KeyError as key_error:
+        logging.error("Item doesn't have 'make' or 'model' property")
+        raise Exception("Item doesn't have 'make' or 'model' property")
+    except Exception as e:
+        logging.error("Error trying to extract data from item: %s", e)
+        raise Exception("Error trying to extract data from item")
 
+    return data, f"{item['make']}/1_{int(time.time())}_{lead_uuid}"
 
 @router.post("/conversion")
 async def submit(file: Request, token: str = Depends(get_token)):
@@ -46,16 +55,16 @@ async def submit(file: Request, token: str = Depends(get_token)):
     body = json.loads(str(body, 'utf-8'))
 
     if 'lead_uuid' not in body or 'converted' not in body:
-        # throw proper HTTPException
-        pass
+        logging.info("lead_uuid' or 'converted' not found in body")
+        raise HTTPException(400, "'lead_uuid' or 'converted' not found in body")
         
     lead_uuid = body['lead_uuid']
     converted = body['converted']
 
     oem, role = get_user_role(token)
     if role != "OEM":
-        # throw proper HTTPException
-        pass
+        logging.info("role isn't OEM")
+        raise HTTPException(400, "role isn't 'OEM'")
 
     is_updated, item = db_helper_session.update_lead_conversion(lead_uuid, oem, converted)
     if is_updated:
@@ -66,5 +75,4 @@ async def submit(file: Request, token: str = Depends(get_token)):
             "message": "Lead Conversion Status Update"
         }
     else:
-        # throw proper HTTPException
-        pass
+        raise HTTPException(400, "lead_conversion not updated")
