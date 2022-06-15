@@ -38,4 +38,5 @@ def ping():
     start = time.process_time()
     time_taken = (time.process_time() - start) * 1000
     logging.info("Ping Time: %f ms", time_taken)
+    #ping could be time sensitive, so maybe it's better to not log?
     return {f"Pong with response time {time_taken} ms"}
